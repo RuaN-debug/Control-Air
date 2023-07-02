@@ -52,10 +52,14 @@ def create_room(room: Room, db: Session):
 
 
 def remove_room(room_id: str, db: Session):
-    room = retrieve_room(room_id, db)
+    room = db.query(room_db).filter(room_db.id == room_id).one_or_none()
     if not room:
         return None
 
+    if room.air_conditioners:
+        for air_conditioner in room.air_conditioners:
+            remove_air_conditioner(air_conditioner.id, db)
+            
     db.delete(room)
     db.commit()
 
@@ -63,10 +67,18 @@ def remove_room(room_id: str, db: Session):
 
 
 def change_room(room_id: str, new_room: UpdateRoom, db: Session):
-    room = retrieve_room(room_id, db)
+    room = db.query(room_db).filter(room_db.id == room_id).one_or_none()
     if not room:
         return None
 
+    air_conditioner = None
+    if new_room.air_conditioners:
+        air_conditioner = new_room.air_conditioners[0]
+        new_room.air_conditioners = None
+        
+    if air_conditioner:
+        room.air_conditioners[0].model = air_conditioner.model
+        
     for item, value in vars(new_room).items():
         setattr(room, item, value) if value else None
 
@@ -100,7 +112,6 @@ def create_air_conditioner(air_conditioner: AirConditioner, db: Session):
 
 
 def remove_air_conditioner(air_conditioner_id: str, db: Session):
-
     air_conditioner = retrieve_air_conditioner(air_conditioner_id, db)
     if not air_conditioner:
         return None

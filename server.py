@@ -1,10 +1,8 @@
-from schemas import Room, UpdateRoom, AirConditioner, UpdateAirConditioner
-from fastapi import FastAPI, HTTPException, WebSocket, Depends
+from fastapi import FastAPI, HTTPException, WebSocket, Depends, WebSocketDisconnect
+from schemas import Room, UpdateRoom, UpdateAirConditioner
+from database import SessionLocal, database, engine
 from starlette.responses import RedirectResponse
 from sqlalchemy.orm import Session
-from database import SessionLocal
-from database import database
-from database import engine
 from crud import (
     retrieve_all_rooms,
     retrieve_room,
@@ -13,21 +11,12 @@ from crud import (
     change_room,
     retrieve_all_air_conditioners,
     retrieve_air_conditioner,
-    create_air_conditioner,
     remove_air_conditioner,
     change_air_conditioner
 )
 
 import models
-
-
-app = FastAPI(
-    title="Control Air",
-    description="API para controle de ar condicionado",
-    version="0.0.1",
-)
-
-models.Base.metadata.create_all(bind=engine)
+import asyncio
 
 
 def get_db():
@@ -38,24 +27,46 @@ def get_db():
         db.close()
 
 
+models.Base.metadata.create_all(bind=engine)
+notification_event = asyncio.Event()
+app = FastAPI(
+    title="Control Air",
+    description="API para controle de ar condicionado",
+    version="0.0.1",
+    dependencies=[Depends(get_db)]
+)
+
+
 @app.on_event("startup")
 async def startup():
     await database.connect()
+    app.active_connections = set()
 
 
 @app.on_event("shutdown")
 async def shutdown():
     await database.disconnect()
-
+       
 
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(websocket: WebSocket, db: Session = Depends(get_db)):
     await websocket.accept()
-    while True:
-        data = await websocket.receive_text()
-        await websocket.send_text(f"Message received: {data}")
+    app.active_connections.add(websocket)
+    
+    try:
+        while True:
+            await notification_event.wait()
+            notification_event.clear()
+            
+            data = retrieve_all_rooms(db)
+            for websocket in app.active_connections:
+                await websocket.send_text(f"Message received: {data}")
+            
+            await asyncio.sleep(0.1)
+    except WebSocketDisconnect:
+        app.active_connections.remove(websocket)
 
-
+    
 # Redireciona para o docs
 @app.get("/")
 async def main():
@@ -108,7 +119,10 @@ async def update_room(room_id: str, new_room: UpdateRoom, db: Session = Depends(
     room = change_room(room_id, new_room, db)
     if not room:
         return HTTPException(status_code=404, detail="Room not updated")
-
+    
+    if new_room.temperature or new_room.humidity:
+        notification_event.set()
+        
     return {"Message": f"Room '{room}' updated successfully"}
 
 
@@ -144,8 +158,7 @@ async def delete_room(air_conditioner_id: str, db: Session = Depends(get_db)):
 # Rota atualizar cômodo
 @app.put("/update-air_conditioner/{air_conditioner_id}")
 async def update_room(air_conditioner_id: str, new_air_conditioner: UpdateAirConditioner, db: Session = Depends(get_db)):
-    air_conditioner = change_air_conditioner(
-        air_conditioner_id, new_air_conditioner, db)
+    air_conditioner = change_air_conditioner(air_conditioner_id, new_air_conditioner, db)
     if not air_conditioner:
         return HTTPException(status_code=404, detail="Air Conditioner not updated")
 
