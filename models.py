@@ -11,8 +11,8 @@ class RoomDb(Base):
     id = Column(String, primary_key=True, index=True, nullable=True)
     name = Column(String, index=True)
     sensor = Column(String)
-    temperature = Column(Float, nullable=True)
-    humidity = Column(Float, nullable=True)
+    temperature = Column(Float, default=0)
+    humidity = Column(Float, default=0)
     air_conditioners = relationship("AirConditionerDb", back_populates="room")
 
     def __repr__(self):
@@ -24,7 +24,7 @@ class AirConditionerDb(Base):
 
     id = Column(String, primary_key=True, index=True, nullable=True)
     model = Column(String, index=True)
-    temperature = Column(Float)
+    temperature = Column(Float, default=22)
     room_id = Column(String, ForeignKey('room.id'))
     room = relationship("RoomDb", back_populates="air_conditioners")
 

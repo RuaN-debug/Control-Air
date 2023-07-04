@@ -17,6 +17,7 @@ from crud import (
 
 import models
 import asyncio
+import json
 
 
 def get_db():
@@ -60,7 +61,7 @@ async def websocket_endpoint(websocket: WebSocket, db: Session = Depends(get_db)
             
             data = retrieve_all_rooms(db)
             for websocket in app.active_connections:
-                await websocket.send_text(f"Message received: {data}")
+                await websocket.send_text(json.dumps({"message": data}))
             
             await asyncio.sleep(0.1)
     except WebSocketDisconnect:
